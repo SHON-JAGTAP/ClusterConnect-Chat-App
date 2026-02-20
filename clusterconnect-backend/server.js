@@ -1,69 +1,116 @@
 require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const http = require("http");
-const socketIo = require("socket.io");
+const { Server } = require("socket.io");
 
+const redis = require("./config/redis");
 const pool = require("./config/db");
+
+const { initKafkaProducer, sendMessageToKafka } = require("./controllers/kafkaController");
+const runConsumer = require("./kafkaconsumer");
+
 const authRoutes = require("./routes/authRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: process.env.CLIENT_URL || ["http://localhost:5173", "http://localhost:5174"],
-    methods: ["GET", "POST"],
-  },
-});
 
-app.use(cors());
+// ==============================
+// INIT KAFKA + CONSUMER
+// ==============================
+
+initKafkaProducer();
+runConsumer();
+
+// ==============================
+// CORS
+// ==============================
+
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
-// Test database connection
-pool.on("connect", () => {
-  console.log("✅ Database connected successfully");
-});
-
-pool.on("error", (err) => {
-  console.error("❌ Database connection error:", err);
-});
-
-// Test query on startup
-pool.query("SELECT NOW()", (err, result) => {
-  if (err) {
-    console.error("❌ Database query failed:", err);
-  } else {
-    console.log("✅ Database query successful:", result.rows[0]);
-  }
-});
+// ==============================
+// ROUTES
+// ==============================
 
 app.use("/api/auth", authRoutes);
 app.use("/api/chat", chatRoutes);
 
-// Socket.io connection
+// ==============================
+// DATABASE TEST
+// ==============================
+
+pool
+  .query("SELECT NOW()")
+  .then(() => console.log("✅ PostgreSQL Connected"))
+  .catch((err) => console.error("❌ PostgreSQL Error:", err));
+
+// ==============================
+// SOCKET.IO
+// ==============================
+
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:5173",
+    methods: ["GET", "POST"],
+  },
+});
+
+// ==============================
+// REDIS SUBSCRIBER (Broadcast Only)
+// ==============================
+
+const subscriber = redis.duplicate();
+subscriber.subscribe("chat_channel");
+
+subscriber.on("message", (channel, message) => {
+  try {
+    const data = JSON.parse(message);
+    io.to(data.chatRoom).emit("receive_message", data);
+  } catch (err) {
+    console.error("Redis message error:", err);
+  }
+});
+
+// ==============================
+// SOCKET EVENTS
+// ==============================
+
 io.on("connection", (socket) => {
-  console.log("New user connected:", socket.id);
+  console.log("🔌 User connected:", socket.id);
 
   socket.on("join_room", (data) => {
     socket.join(data.chatRoom);
-    console.log(`User ${data.userId} joined room ${data.chatRoom}`);
-    io.to(data.chatRoom).emit("user_joined", data);
   });
 
-  socket.on("send_message", (data) => {
-    io.to(data.chatRoom).emit("receive_message", data);
-  });
-
-  socket.on("user_typing", (data) => {
-    socket.to(data.chatRoom).emit("user_typing", data);
+  socket.on("send_message", async (data) => {
+    try {
+      // Send to Kafka instead of Redis
+      await sendMessageToKafka(data);
+    } catch (err) {
+      console.error("Kafka send error:", err);
+    }
   });
 
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
+    console.log("❌ User disconnected:", socket.id);
   });
 });
 
-server.listen(5000, () => {
-  console.log("🚀 Server running on port 5000");
+// ==============================
+// START SERVER
+// ==============================
+
+const PORT = process.env.PORT || 5000;
+
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });

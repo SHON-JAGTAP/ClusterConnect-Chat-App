@@ -1,9 +1,18 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
-const Login = ({ setUser }) => {
+const Login = () => {
+  const navigate = useNavigate();
+
   const handleLogin = () => {
-    
-    setUser({ name: "Test User", id: "123" });
+    // Simulate login
+    localStorage.setItem("token", "dev-token");
+    localStorage.setItem(
+      "user",
+      JSON.stringify({ name: "Test User", id: "123" })
+    );
+
+    navigate("/chat");
   };
 
   return (

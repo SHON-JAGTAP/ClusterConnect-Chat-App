@@ -1,22 +1,14 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Home from "./pages/Home";
 import Login from "./pages/signin";
 import Register from "./pages/Register";
 import Chat from "./pages/Chat";
+import ProtectedRoute from "./components/ProtectedRoute";
 import "./App.css";
 
 function App() {
-  const [token, setToken] = useState(localStorage.getItem("token"));
-
-  useEffect(() => {
-    const handleStorageChange = () => {
-      setToken(localStorage.getItem("token"));
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, []);
+  const token = localStorage.getItem("token");
 
   return (
     <Routes>
@@ -24,20 +16,24 @@ function App() {
 
       <Route
         path="/login"
-        element={token ? <Navigate to="/chat" /> : <Login />}
+        element={token ? <Navigate to="/chat" replace /> : <Login />}
       />
 
       <Route
         path="/register"
-        element={token ? <Navigate to="/chat" /> : <Register />}
+        element={token ? <Navigate to="/chat" replace /> : <Register />}
       />
 
       <Route
         path="/chat"
-        element={token ? <Chat /> : <Navigate to="/login" />}
+        element={
+          <ProtectedRoute>
+            <Chat />
+          </ProtectedRoute>
+        }
       />
 
-      <Route path="*" element={<Navigate to="/" />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
