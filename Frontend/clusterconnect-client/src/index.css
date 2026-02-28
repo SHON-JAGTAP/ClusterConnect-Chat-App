@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================= */
+/* Base Styles */
+/* ============================= */
+@layer base {
+  body {
+    @apply bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 min-h-screen text-white;
+  }
+}
+
+/* ============================= */
+/* Reusable Components */
+/* ============================= */
+@layer components {
+
+  /* Glass Effect */
+  .glass-effect {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20;
+  }
+
+  /* Primary Button */
+  .btn-primary {
+    @apply bg-gradient-to-r from-purple-600 to-blue-600 
+           hover:from-purple-700 hover:to-blue-700 
+           text-white font-semibold 
+           py-3 px-6 
+           rounded-xl 
+           shadow-lg hover:shadow-purple-500/50 
+           transition-all duration-300 
+           transform hover:scale-105;
+  }
+
+  /* Secondary Button */
+  .btn-secondary {
+    @apply glass-effect 
+           text-white font-semibold 
+           py-3 px-6 
+           rounded-xl 
+           hover:bg-white/20 
+           transition-all duration-300;
+  }
+
+  /* Input Field */
+  .input-field {
+    @apply glass-effect 
+           text-white placeholder-gray-300 
+           px-4 py-3 
+           rounded-xl 
+           focus:outline-none 
+           focus:ring-2 focus:ring-purple-500 
+           transition-all duration-300;
+  }
+
+  /* 3D Card Hover */
+  .card-3d {
+    @apply transform 
+           transition-all duration-300 
+           hover:scale-105 
+           hover:-translate-y-2 
+           hover:shadow-2xl hover:shadow-purple-500/30;
+  }
+}

@@ -1,0 +1,80 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mysql-init
+  namespace: default
+spec:
+  template:
+    spec:
+      containers:
+      - name: mysql-init
+        image: mysql:8.0
+        command:
+        - /bin/sh
+        - -c
+        - |
+          until mysql -h mysql-service -u clusteruser -pclusterpass123 -e "SELECT 1"; do
+            echo "Waiting for MySQL..."
+            sleep 2
+          done
+          
+          mysql -h mysql-service -u clusteruser -pclusterpass123 clusterconnect <<EOF
+          
+          -- Create users table
+          CREATE TABLE IF NOT EXISTS users (
+            id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+            email VARCHAR(255) NOT NULL UNIQUE,
+            name VARCHAR(255) NOT NULL,
+            password VARCHAR(255),
+            avatar VARCHAR(255),
+            status VARCHAR(50) DEFAULT 'offline',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+          );
+          
+          -- Create messages table
+          CREATE TABLE IF NOT EXISTS messages (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            sender_id VARCHAR(36) NOT NULL,
+            recipient_id VARCHAR(36) NOT NULL,
+            content TEXT NOT NULL,
+            chat_room VARCHAR(255),
+            \`read\` BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE
+          );
+          
+          -- Create chat_rooms table
+          CREATE TABLE IF NOT EXISTS chat_rooms (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            description TEXT,
+            created_by VARCHAR(36) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+          );
+          
+          -- Create room_members table
+          CREATE TABLE IF NOT EXISTS room_members (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            room_id INT NOT NULL,
+            user_id VARCHAR(36) NOT NULL,
+            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (room_id) REFERENCES chat_rooms(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE KEY unique_room_user (room_id, user_id)
+          );
+          
+          -- Create indexes
+          CREATE INDEX idx_messages_sender_id ON messages(sender_id);
+          CREATE INDEX idx_messages_recipient_id ON messages(recipient_id);
+          CREATE INDEX idx_messages_chat_room ON messages(chat_room);
+          CREATE INDEX idx_room_members_room_id ON room_members(room_id);
+          CREATE INDEX idx_room_members_user_id ON room_members(user_id);
+          
+          EOF
+          
+          echo "MySQL database initialized successfully!"
+      restartPolicy: Never
+  backoffLimit: 3
