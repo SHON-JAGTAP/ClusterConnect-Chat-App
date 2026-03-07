@@ -2,11 +2,19 @@ import io from "socket.io-client";
 
 const token = localStorage.getItem("token");
 
-const socket = io("http://localhost:5000", {
+const SOCKET_URL =
+  import.meta.env.VITE_SOCKET_URL ||
+  "https://clusterconnect-chat-app-production.up.railway.app";
+
+const socket = io(SOCKET_URL, {
   auth: {
     token: token
   },
-  autoConnect: false
+  autoConnect: false,
+  reconnection: true,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  reconnectionAttempts: 5
 });
 
 socket.on("connect", () => {

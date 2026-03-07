@@ -9,14 +9,41 @@ async function migrate() {
   let connection;
   try {
     console.log("🚀 Starting database migration...");
+    console.log("📍 DATABASE_URL:", process.env.DATABASE_URL ? "✓ Loaded" : "✗ Missing");
+    console.log("📍 DB_HOST:", process.env.DB_HOST || "not set");
 
-    connection = await mysql.createConnection({
-      host: process.env.DB_HOST || "localhost",
-      user: process.env.DB_USER || "root",
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME || "clusterconnect",
-      multipleStatements: true,
-    });
+    // Parse DATABASE_URL
+    let config;
+    if (process.env.DATABASE_URL) {
+      try {
+        const dbUrl = new URL(process.env.DATABASE_URL);
+        config = {
+          host: dbUrl.hostname,
+          user: dbUrl.username,
+          password: dbUrl.password,
+          database: dbUrl.pathname.slice(1),
+          multipleStatements: true,
+        };
+        console.log("✓ Using DATABASE_URL");
+      } catch (e) {
+        throw new Error(`Invalid DATABASE_URL: ${e.message}`);
+      }
+    } else {
+      // Fallback to individual env vars
+      config = {
+        host: process.env.DB_HOST || "localhost",
+        user: process.env.DB_USER || "root",
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME || "clusterconnect",
+        multipleStatements: true,
+      };
+      console.log("✓ Using individual DB variables");
+    }
+
+    console.log(`🔗 Connecting to ${config.host}:3306/${config.database}...`);
+    
+    connection = await mysql.createConnection(config);
+    console.log("✅ Connected to database");
 
     const dumpPath = path.join(__dirname, "../dump.sql");
     

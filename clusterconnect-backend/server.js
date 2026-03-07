@@ -21,20 +21,24 @@ const server = http.createServer(app);
 
 // ALLOWED ORIGINS
 
-
 const allowedOrigins = [
   "http://localhost:5173",
-  "http://127.0.0.1:5173"
+  "http://127.0.0.1:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "https://clusterconnect.vercel.app", // Frontend on Vercel
+  /\.vercel\.app$/,  // Allow all Vercel deployments
+  /\.railway\.app$/, // Allow Railway deployments
 ];
 
-
 // CORS (Express)
-
 
 app.use(
   cors({
     origin: allowedOrigins,
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
