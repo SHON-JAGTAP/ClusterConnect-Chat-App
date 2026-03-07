@@ -4,11 +4,10 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install
+RUN npm install --production
 
 COPY . .
 
 EXPOSE 5000
 
-# Run migrations on startup, then start the server
 CMD ["sh", "-c", "npm run migrate && node server.js"]
