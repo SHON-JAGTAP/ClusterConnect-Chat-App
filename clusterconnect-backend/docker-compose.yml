@@ -1,5 +1,21 @@
 services:
 
+  mysql:
+    image: mysql:9.0
+    container_name: mysql-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-shon@123}
+      MYSQL_DATABASE: ${DB_NAME:-clusterconnect}
+      MYSQL_USER: ${DB_USER:-root}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./dump.sql:/docker-entrypoint-initdb.d/dump.sql
+    networks:
+      - app-network
+    restart: always
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     environment:
@@ -40,6 +56,7 @@ services:
     depends_on:
       - kafka
       - redis
+      - mysql
     ports:
       - "5000:5000"
     env_file:
@@ -48,6 +65,11 @@ services:
       KAFKA_BROKER: kafka:9092
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: ${DB_USER:-root}
+      DB_PASSWORD: ${DB_PASSWORD:-shon@123}
+      DB_NAME: ${DB_NAME:-clusterconnect}
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -66,6 +88,9 @@ services:
       - kafka
     networks:
       - app-network
+
+volumes:
+  mysql-data:
 
 networks:
   app-network:
