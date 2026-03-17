@@ -4,7 +4,7 @@ const token = localStorage.getItem("token");
 
 const SOCKET_URL =
   import.meta.env.VITE_SOCKET_URL ||
-  "https://clusterconnect-chat-app-production.up.railway.app";
+  "http://localhost:5000";
 
 const socket = io(SOCKET_URL, {
   auth: {

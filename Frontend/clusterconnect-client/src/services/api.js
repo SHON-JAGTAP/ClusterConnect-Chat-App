@@ -2,7 +2,7 @@ import axios from "axios";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ||
-  "https://clusterconnect-chat-app-production.up.railway.app";
+  "http://localhost:5000";
 
 const api = axios.create({
   baseURL: API_BASE_URL,

@@ -26,9 +26,6 @@ const allowedOrigins = [
   "http://127.0.0.1:5173",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
-  "https://clusterconnect.vercel.app", // Frontend on Vercel
-  /\.vercel\.app$/,  // Allow all Vercel deployments
-  /\.railway\.app$/, // Allow Railway deployments
 ];
 
 // CORS (Express)
