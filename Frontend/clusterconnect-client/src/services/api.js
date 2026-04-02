@@ -1,8 +1,23 @@
 import axios from "axios";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL ||
-  "http://localhost:5000";
+// Dynamically determine API URL
+let API_BASE_URL = import.meta.env.VITE_API_URL;
+
+if (!API_BASE_URL) {
+  // If no env var, try to auto-detect
+  const hostname = window.location.hostname;
+  const port = 5000; // Backend port
+  
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    // Local development
+    API_BASE_URL = `http://${hostname}:${port}`;
+  } else {
+    // Production/Kubernetes - use current hostname with backend port
+    API_BASE_URL = `http://${hostname}:${port}`;
+  }
+}
+
+console.log("🔗 API URL:", API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -31,7 +46,7 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem("token");
-      window.location.href = "/signin";
+      window.location.href = "/login";
     }
     return Promise.reject(error);
   }

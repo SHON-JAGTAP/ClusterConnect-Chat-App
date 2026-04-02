@@ -1,14 +1,12 @@
 import io from "socket.io-client";
 
-const token = localStorage.getItem("token");
-
 const SOCKET_URL =
   import.meta.env.VITE_SOCKET_URL ||
   "http://localhost:5000";
 
 const socket = io(SOCKET_URL, {
   auth: {
-    token: token
+    token: localStorage.getItem("token")
   },
   autoConnect: false,
   reconnection: true,
@@ -17,16 +15,21 @@ const socket = io(SOCKET_URL, {
   reconnectionAttempts: 5
 });
 
+// Update token dynamically before each reconnect
+socket.on("reconnect_attempt", () => {
+  socket.auth = { token: localStorage.getItem("token") };
+});
+
 socket.on("connect", () => {
-  console.log(" Connected to server:", socket.id);
+  console.log("✅ Connected to server:", socket.id);
 });
 
 socket.on("disconnect", () => {
-  console.log(" Disconnected from server");
+  console.log("❌ Disconnected from server");
 });
 
 socket.on("connect_error", (error) => {
-  console.error(" Socket connection error:", error.message);
+  console.error("🔴 Socket connection error:", error.message);
 });
 
 socket.on("error", (error) => {

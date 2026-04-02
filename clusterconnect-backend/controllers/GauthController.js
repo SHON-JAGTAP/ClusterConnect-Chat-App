@@ -25,7 +25,7 @@ async function googleLogin(req, res) {
       user = await createUser(email, name, null);
     }
 
-    if (!user || !user.id) {
+    if (!user || !user._id) {
       console.error("❌ User creation/retrieval failed");
       return res.status(500).json({ message: "Failed to create user" });
     }
@@ -33,12 +33,12 @@ async function googleLogin(req, res) {
     console.log("✅ User found/created:", user);
 
     const appToken = jwt.sign(
-      { userId: user.id },
+      { userId: user._id.toString() },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
 
-    res.json({ token: appToken, user });
+    res.json({ token: appToken, user: { ...user, id: user._id } });
 
   } catch (err) {
     console.error("❌ Google auth error:", err);

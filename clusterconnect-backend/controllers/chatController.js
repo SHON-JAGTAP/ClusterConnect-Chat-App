@@ -1,55 +1,87 @@
-const { createMessage, getMessagesByRoom, getMessagesBetweenUsers } = require("../models/messageModel");
+const { getMessagesBetweenUsers, getMessagesByRoom } = require("../models/messageModel");
 const { getAllUsers, getUserById } = require("../models/userModel");
 
+/**
+ * GET /api/chat/messages/:chatRoom
+ * Fetch the conversation between the logged-in user and the target user.
+ * Supports ?before= for cursor-based pagination.
+ */
 async function getMessages(req, res) {
   try {
     const { chatRoom } = req.params;
+    const userId = req.user.userId;
+    const { before, limit } = req.query;
 
-    const messages = await getMessagesByRoom(chatRoom);
+    if (!chatRoom) {
+      return res.status(400).json({ message: "chatRoom parameter is required" });
+    }
+
+    const messages = await getMessagesBetweenUsers(userId, chatRoom, {
+      limit: Math.min(parseInt(limit) || 50, 100), // Cap at 100
+      before,
+    });
+
     res.status(200).json(messages);
   } catch (error) {
-    console.error("Get messages error:", error);
-    res.status(500).json({ message: error.message });
+    console.error("❌ getMessages error:", error.message);
+    res.status(500).json({ message: "Failed to retrieve messages" });
   }
 }
 
+/**
+ * POST /api/chat/send
+ * Direct HTTP fallback for sending a message (normally goes through Socket via Kafka).
+ * Only use when Socket/Kafka is unavailable.
+ */
 async function sendMessage(req, res) {
   try {
-    const { senderId, message, chatRoom } = req.body;
+    const { message, chatRoom } = req.body;
+    // Use authenticated sender from JWT, NOT from request body (security fix)
+    const senderId = req.user.userId;
 
-    console.log("📨 Send message request:", { senderId, message, chatRoom });
-
-    if (!senderId || !message) {
-      return res.status(400).json({ message: "senderId and message are required" });
+    if (!message || typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({ message: "message is required and must be a non-empty string" });
     }
 
-    const newMessage = await createMessage(senderId, message, chatRoom);
-    console.log("✅ Message created:", newMessage);
+    if (!chatRoom) {
+      return res.status(400).json({ message: "chatRoom is required" });
+    }
 
+    const { createMessage } = require("../models/messageModel");
+    const newMessage = await createMessage(senderId, message, chatRoom);
+
+    // Fetch sender info for response enrichment
     const senderInfo = await getUserById(senderId);
-    console.log("✅ Sender info:", senderInfo);
 
     res.status(201).json({
-      message: "Message sent successfully",
+      message: "Message sent",
       data: {
         ...newMessage,
         sender: senderInfo,
       },
     });
   } catch (error) {
-    console.error("❌ Send message error:", error);
-    console.error("Error stack:", error.stack);
-    res.status(500).json({ message: error.message });
+    console.error("❌ sendMessage error:", error.message);
+    res.status(500).json({ message: "Failed to send message" });
   }
 }
 
+/**
+ * GET /api/chat/users
+ * Fetch all registered users (excluding the caller's own account).
+ */
 async function getUsers(req, res) {
   try {
+    const currentUserId = req.user.userId;
     const users = await getAllUsers();
-    res.status(200).json(users);
+    // Filter out the requesting user on the server side
+    const filtered = users.filter(
+      (u) => u._id.toString() !== currentUserId.toString()
+    );
+    res.status(200).json(filtered);
   } catch (error) {
-    console.error("Get users error:", error);
-    res.status(500).json({ message: error.message });
+    console.error("❌ getUsers error:", error.message);
+    res.status(500).json({ message: "Failed to retrieve users" });
   }
 }
 

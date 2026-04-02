@@ -1,5 +1,4 @@
 const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
 const { findUserByEmail, createUser, verifyPassword } = require("../models/userModel");
 
 async function register(req, res) {
@@ -20,21 +19,18 @@ async function register(req, res) {
       return res.status(400).json({ message: "User already exists" });
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create new user with hashed password
-    user = await createUser(email, name, hashedPassword);
+    // Create new user - password will be hashed by schema pre-save hook
+    user = await createUser(email, name, password);
 
     // Generate JWT token
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
+    const token = jwt.sign({ userId: user._id.toString() }, process.env.JWT_SECRET, {
       expiresIn: "7d",
     });
 
     res.status(201).json({
       message: "User registered successfully",
       token,
-      user: { id: user.id, email: user.email, name: user.name },
+      user: { id: user._id, email: user.email, name: user.name },
     });
   } catch (error) {
     console.error("Register error:", error);
@@ -74,7 +70,7 @@ async function login(req, res) {
     console.log("✅ Password verified for:", email);
 
     // Generate JWT token
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
+    const token = jwt.sign({ userId: user._id.toString() }, process.env.JWT_SECRET, {
       expiresIn: "7d",
     });
     
@@ -83,7 +79,7 @@ async function login(req, res) {
     res.status(200).json({
       message: "Logged in successfully",
       token,
-      user: { id: user.id, email: user.email, name: user.name },
+      user: { id: user._id, email: user.email, name: user.name },
     });
   } catch (error) {
     console.error("❌ Login error:", error);

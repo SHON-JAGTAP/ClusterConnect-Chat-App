@@ -1,9 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../services/api";
 import { GoogleLogin } from "@react-oauth/google";
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 function Login() {
   const navigate = useNavigate();
@@ -26,7 +24,7 @@ function Login() {
 
     setLoading(true);
     try {
-      const response = await axios.post(`${API_URL}/api/auth/login`, formData);
+      const response = await api.post(`/api/auth/login`, formData);
       if (response.data.token) {
         localStorage.setItem("token", response.data.token);
         localStorage.setItem("user", JSON.stringify(response.data.user));
@@ -41,7 +39,7 @@ function Login() {
 
   const handleGoogleSuccess = async (credentialResponse) => {
     try {
-      const res = await axios.post(`${API_URL}/api/auth/google`, { token: credentialResponse.credential });
+      const res = await api.post(`/api/auth/google`, { token: credentialResponse.credential });
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(res.data.user));
       navigate("/chat");

@@ -1,25 +1,49 @@
 require("dotenv").config();
-const mysql = require("mysql2/promise");
+const mongoose = require("mongoose");
 
-console.log("🔍 DATABASE_URL:", process.env.DATABASE_URL ? "Loaded" : "Missing");
+const MONGODB_URL = process.env.MONGODB_URL;
 
-const pool = mysql.createPool({
-  uri: process.env.DATABASE_URL,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+if (!MONGODB_URL) {
+  console.error("❌ FATAL: MONGODB_URL environment variable is not set.");
+  process.exit(1);
+}
+
+const mongooseOptions = {
+  serverSelectionTimeoutMS: 5000,   // Fail fast if Mongo is unreachable
+  socketTimeoutMS: 45000,           // Close sockets after 45s of inactivity
+  maxPoolSize: 20,                  // Max connections in the pool
+  minPoolSize: 5,                   // Keep at least 5 connections alive
+  heartbeatFrequencyMS: 10000,      // Check server health every 10s
+};
+
+const connectDB = async () => {
+  try {
+    await mongoose.connect(MONGODB_URL, mongooseOptions);
+    console.log("✅ MongoDB Connected Successfully");
+  } catch (err) {
+    console.error("❌ MongoDB Connection Error:", err.message);
+    process.exit(1);
+  }
+};
+
+// Handle connection events for visibility
+mongoose.connection.on("disconnected", () => {
+  console.warn("⚠️  MongoDB disconnected. Attempting to reconnect...");
 });
 
-pool.getConnection()
-  .then(connection => {
-    console.log(" MySQL Connected Successfully");
-    return connection.query('SELECT NOW() as now');
-  })
-  .then(([rows]) => {
-    console.log(" Database time:", rows[0].now);
-  })
-  .catch(err => {
-    console.error(" MySQL Connection Error:", err.message);
-  });
+mongoose.connection.on("reconnected", () => {
+  console.log("✅ MongoDB reconnected.");
+});
 
-module.exports = pool;
+// Graceful shutdown: close MongoDB on SIGINT/SIGTERM
+const gracefulShutdown = async (signal) => {
+  console.log(`\n🛑 ${signal} received. Closing MongoDB connection...`);
+  await mongoose.connection.close();
+  console.log("MongoDB connection closed.");
+  process.exit(0);
+};
+
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+
+module.exports = { connectDB, mongoose };

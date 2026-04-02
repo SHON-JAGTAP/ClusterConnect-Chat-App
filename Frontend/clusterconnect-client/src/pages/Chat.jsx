@@ -1,85 +1,261 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../services/api";
 import socket from "../services/socket";
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+// ─────────────────────────────────────────────
+// Sub-components (prevent full re-renders)
+// ─────────────────────────────────────────────
+
+/** A single user item in the sidebar */
+const UserItem = ({ chatUser, isSelected, onClick }) => (
+  <div
+    role="button"
+    tabIndex={0}
+    key={chatUser.id}
+    onClick={() => onClick(chatUser)}
+    onKeyDown={(e) => e.key === "Enter" && onClick(chatUser)}
+    className={`p-4 cursor-pointer transition-all duration-200 border-b border-white/5 hover:bg-white/10 ${
+      isSelected
+        ? "bg-gradient-to-r from-purple-500/20 to-blue-500/20 border-l-4 border-purple-500"
+        : ""
+    }`}
+  >
+    <div className="flex items-center gap-3">
+      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+        {chatUser.name.charAt(0).toUpperCase()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-white font-medium truncate">{chatUser.name}</p>
+        <p className="text-gray-400 text-sm truncate">{chatUser.email}</p>
+      </div>
+    </div>
+  </div>
+);
+
+/** A single chat bubble */
+const MessageBubble = ({ msg, isMine }) => {
+  const time = useMemo(() => {
+    const d = msg.createdAt || msg.created_at;
+    return d ? new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+  }, [msg.createdAt, msg.created_at]);
+
+  return (
+    <div className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`max-w-sm lg:max-w-md px-4 py-3 rounded-2xl shadow-lg ${
+          isMine
+            ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-br-none"
+            : "glass-effect text-white rounded-bl-none"
+        }`}
+      >
+        <p className="break-words">{msg.message}</p>
+        {time && <p className="text-xs mt-1 opacity-60 text-right">{time}</p>}
+      </div>
+    </div>
+  );
+};
+
+/** Typing indicator dots */
+const TypingIndicator = () => (
+  <div className="flex justify-start">
+    <div className="glass-effect px-4 py-3 rounded-2xl rounded-bl-none flex gap-1 items-center">
+      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+    </div>
+  </div>
+);
+
+// ─────────────────────────────────────────────
+// Main Chat component
+// ─────────────────────────────────────────────
 
 function Chat() {
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem("user"));
+
+  // Parse user once — avoid repeated JSON.parse on render
+  const user = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("user")) || {};
+    } catch {
+      return {};
+    }
+  }, []);
   const token = localStorage.getItem("token");
+
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [msgLoading, setMsgLoading] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);       // peer is typing
+  const [sendError, setSendError] = useState(null);
 
+  const messagesEndRef = useRef(null);
+  const typingTimerRef = useRef(null);
+
+  // ── Auth guard ─────────────────────────────
   useEffect(() => {
-    if (!token) {
-      navigate("/login");
-      return;
-    }
+    if (!token) navigate("/login");
+  }, [token, navigate]);
+
+  // ── Fetch user list ───────────────────────
+  useEffect(() => {
+    if (!token) return;
 
     const fetchUsers = async () => {
       try {
-        const response = await axios.get(`${API_URL}/api/chat/users`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setUsers(response.data.filter(u => u.id !== user.id));
-      } catch (error) {
-        console.error("Failed to fetch users:", error);
+        const { data } = await api.get("/api/chat/users");
+        // Server already filters out current user, but normalize _id→id for safety
+        const normalized = data.map((u) => ({ ...u, id: u._id || u.id }));
+        setUsers(normalized);
+      } catch (err) {
+        console.error("Failed to fetch users:", err);
       }
     };
 
     fetchUsers();
+  }, [token]);
+
+  // ── Socket lifecycle ──────────────────────
+  useEffect(() => {
+    if (!token) return;
+
     socket.auth = { token };
     socket.connect();
 
-    return () => socket.disconnect();
-  }, [token, navigate]);
+    // Receive message
+    const onMessage = (data) => {
+      setMessages((prev) => {
+        // Deduplicate by _id if message already exists (e.g. from optimistic update)
+        const exists = prev.some((m) => m._id && m._id === data._id);
+        return exists ? prev : [...prev, data];
+      });
+      setIsTyping(false);
+    };
 
+    // Typing indicators
+    const onTyping = () => setIsTyping(true);
+    const onStopTyping = () => setIsTyping(false);
+
+    // Message send failure
+    const onFailed = () => setSendError("Message failed to send. Please retry.");
+
+    socket.on("receive_message", onMessage);
+    socket.on("user_typing", onTyping);
+    socket.on("user_stopped_typing", onStopTyping);
+    socket.on("message_failed", onFailed);
+
+    return () => {
+      socket.off("receive_message", onMessage);
+      socket.off("user_typing", onTyping);
+      socket.off("user_stopped_typing", onStopTyping);
+      socket.off("message_failed", onFailed);
+      socket.disconnect();
+    };
+  }, [token]);
+
+  // ── Auto-scroll to latest message ────────
   useEffect(() => {
-    socket.on("receive_message", (data) => {
-      setMessages((prev) => [...prev, data]);
-    });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isTyping]);
 
-    return () => socket.off("receive_message");
-  }, []);
-
-  const handleSelectUser = (selectedUser) => {
-    setSelectedUser(selectedUser);
+  // ── Select a user & load conversation ────
+  const handleSelectUser = useCallback(async (targetUser) => {
+    setSelectedUser(targetUser);
     setMessages([]);
-  };
+    setSendError(null);
+    setMsgLoading(true);
 
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if (!messageInput.trim() || !selectedUser) return;
+    // Join the chat room over socket
+    socket.emit("join_room", { chatRoom: targetUser.id });
 
     try {
+      const { data } = await api.get(`/api/chat/messages/${targetUser.id}`);
+      setMessages(data || []);
+    } catch (err) {
+      console.error("Failed to load messages:", err);
+    } finally {
+      setMsgLoading(false);
+    }
+  }, []);
+
+  // ── Typing event throttle ────────────────
+  const handleTyping = useCallback(() => {
+    if (!selectedUser) return;
+    socket.emit("typing_start", { chatRoom: selectedUser.id });
+
+    clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      socket.emit("typing_stop", { chatRoom: selectedUser.id });
+    }, 1500);
+  }, [selectedUser]);
+
+  // ── Send message ─────────────────────────
+  const handleSendMessage = useCallback(
+    async (e) => {
+      e.preventDefault();
+      const trimmed = messageInput.trim();
+      if (!trimmed || !selectedUser || loading) return;
+
+      setSendError(null);
       setLoading(true);
+
+      // Optimistic UI: show message immediately
+      const optimistic = {
+        _id: `optimistic-${Date.now()}`,
+        sender_id: user.id || user._id,
+        message: trimmed,
+        chatRoom: selectedUser.id,
+        createdAt: new Date().toISOString(),
+        _optimistic: true,
+      };
+      setMessages((prev) => [...prev, optimistic]);
+      setMessageInput("");
+
       socket.emit("send_message", {
-        message: messageInput,
+        message: trimmed,
         chatRoom: selectedUser.id,
       });
-      setMessageInput("");
-    } catch (error) {
-      console.error("Failed to send message:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const handleLogout = () => {
+      // Stop typing indicator after sending
+      socket.emit("typing_stop", { chatRoom: selectedUser.id });
+      clearTimeout(typingTimerRef.current);
+
+      setLoading(false);
+    },
+    [messageInput, selectedUser, loading, user]
+  );
+
+  // ── Logout ───────────────────────────────
+  const handleLogout = useCallback(() => {
     localStorage.clear();
     socket.disconnect();
     navigate("/login");
-  };
+  }, [navigate]);
+
+  // ── Helper: normalize sender ID ──────────
+  const getSenderId = useCallback((msg) => {
+    if (msg.sender_id) {
+      return typeof msg.sender_id === "object"
+        ? msg.sender_id._id || msg.sender_id.id
+        : msg.sender_id;
+    }
+    return msg.senderId;
+  }, []);
+
+  const myId = user.id || user._id;
+
+  // ─────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col" style={{ height: "100dvh" }}>
       {/* Navbar */}
-      <nav className="glass-effect border-b border-white/10 px-6 py-4">
+      <nav className="glass-effect border-b border-white/10 px-6 py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
             ClusterConnect
@@ -90,6 +266,7 @@ function Chat() {
               <p className="text-gray-400 text-sm">{user?.email}</p>
             </div>
             <button
+              id="logout-btn"
               onClick={handleLogout}
               className="btn-secondary px-4 py-2 text-sm"
             >
@@ -102,41 +279,34 @@ function Chat() {
       {/* Chat Container */}
       <div className="flex-1 flex overflow-hidden">
         {/* Users Sidebar */}
-        <div className="w-80 glass-effect border-r border-white/10 flex flex-col">
+        <aside className="w-72 lg:w-80 glass-effect border-r border-white/10 flex flex-col flex-shrink-0">
           <div className="p-4 border-b border-white/10">
             <h2 className="text-xl font-semibold text-white">Chats</h2>
           </div>
           <div className="flex-1 overflow-y-auto">
-            {users.map((chatUser) => (
-              <div
-                key={chatUser.id}
-                onClick={() => handleSelectUser(chatUser)}
-                className={`p-4 cursor-pointer transition-all duration-300 border-b border-white/5 hover:bg-white/10 ${
-                  selectedUser?.id === chatUser.id ? "bg-gradient-to-r from-purple-500/20 to-blue-500/20 border-l-4 border-purple-500" : ""
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold text-lg">
-                    {chatUser.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-white font-medium">{chatUser.name}</p>
-                    <p className="text-gray-400 text-sm truncate">{chatUser.email}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
+            {users.length === 0 ? (
+              <p className="text-gray-400 text-sm text-center mt-8 px-4">No other users found.</p>
+            ) : (
+              users.map((chatUser) => (
+                <UserItem
+                  key={chatUser.id}
+                  chatUser={chatUser}
+                  isSelected={selectedUser?.id === chatUser.id}
+                  onClick={handleSelectUser}
+                />
+              ))
+            )}
           </div>
-        </div>
+        </aside>
 
         {/* Chat Area */}
-        <div className="flex-1 flex flex-col">
+        <main className="flex-1 flex flex-col overflow-hidden">
           {selectedUser ? (
             <>
               {/* Chat Header */}
-              <div className="glass-effect border-b border-white/10 p-4">
+              <div className="glass-effect border-b border-white/10 p-4 flex-shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold flex-shrink-0">
                     {selectedUser.name.charAt(0).toUpperCase()}
                   </div>
                   <div>
@@ -147,8 +317,16 @@ function Chat() {
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                {messages.length === 0 ? (
+              <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-3">
+                {msgLoading ? (
+                  <div className="flex justify-center items-center h-full">
+                    <div className="flex gap-2">
+                      <div className="w-3 h-3 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <div className="w-3 h-3 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <div className="w-3 h-3 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </div>
+                  </div>
+                ) : messages.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center">
                       <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center">
@@ -161,42 +339,60 @@ function Chat() {
                   </div>
                 ) : (
                   messages.map((msg, index) => (
-                    <div
-                      key={index}
-                      className={`flex ${msg.sender_id === user.id ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-md px-4 py-3 rounded-2xl ${
-                          msg.sender_id === user.id
-                            ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-br-none"
-                            : "glass-effect text-white rounded-bl-none"
-                        } shadow-lg transform transition-all duration-300 hover:scale-105`}
-                      >
-                        <p>{msg.message}</p>
-                        <p className="text-xs mt-1 opacity-70">
-                          {new Date(msg.created_at).toLocaleTimeString()}
-                        </p>
-                      </div>
-                    </div>
+                    <MessageBubble
+                      key={msg._id || index}
+                      msg={msg}
+                      isMine={getSenderId(msg)?.toString() === myId?.toString()}
+                    />
                   ))
                 )}
+
+                {/* Typing indicator */}
+                {isTyping && <TypingIndicator />}
+
+                {/* Auto-scroll anchor */}
+                <div ref={messagesEndRef} />
               </div>
 
+              {/* Send Error */}
+              {sendError && (
+                <div className="px-4 py-2 bg-red-500/20 border-t border-red-500/30 text-red-300 text-sm text-center">
+                  {sendError}{" "}
+                  <button
+                    className="underline ml-1"
+                    onClick={() => setSendError(null)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
               {/* Message Input */}
-              <form onSubmit={handleSendMessage} className="glass-effect border-t border-white/10 p-4">
+              <form
+                onSubmit={handleSendMessage}
+                className="glass-effect border-t border-white/10 p-4 flex-shrink-0"
+              >
                 <div className="flex gap-3">
                   <input
+                    id="message-input"
                     type="text"
                     value={messageInput}
-                    onChange={(e) => setMessageInput(e.target.value)}
-                    placeholder="Type a message..."
+                    onChange={(e) => {
+                      setMessageInput(e.target.value);
+                      handleTyping();
+                    }}
+                    placeholder="Type a message…"
                     className="input-field flex-1"
                     disabled={loading}
+                    autoComplete="off"
+                    maxLength={2000}
                   />
                   <button
+                    id="send-btn"
                     type="submit"
                     disabled={loading || !messageInput.trim()}
-                    className="btn-primary px-6"
+                    className="btn-primary px-5"
+                    aria-label="Send message"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -206,6 +402,7 @@ function Chat() {
               </form>
             </>
           ) : (
+            /* Empty state */
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <div className="w-32 h-32 mx-auto mb-6 rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center animate-float">
@@ -218,7 +415,7 @@ function Chat() {
               </div>
             </div>
           )}
-        </div>
+        </main>
       </div>
     </div>
   );
