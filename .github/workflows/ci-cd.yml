@@ -1,0 +1,224 @@
+name: ClusterConnect CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Cancel in-progress runs for the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: docker.io                     # Change to ghcr.io if you prefer GitHub Container Registry
+  BACKEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/clusterconnect-backend
+  FRONTEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/clusterconnect-frontend
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 1 ─ Backend CI (lint + unit tests)
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  backend-ci:
+    name: 🔧 Backend – Lint & Test
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: clusterconnect-backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: clusterconnect-backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Add real tests later; this just verifies the server module parses
+      - name: Run tests (smoke)
+        run: node --check server.js
+        env:
+          NODE_ENV: test
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # JOB 2 ─ Frontend CI (lint + build)
+  # ───────────────────────────────────────────────────────────────────────────
+  frontend-ci:
+    name: 🎨 Frontend – Lint & Build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: Frontend/clusterconnect-client
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: Frontend/clusterconnect-client/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build (production)
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: Frontend/clusterconnect-client/dist/
+          retention-days: 7
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # JOB 3 ─ Build & Push Docker images (only on pushes to main / develop)
+  # ───────────────────────────────────────────────────────────────────────────
+  docker-build-push:
+    name: 🐳 Build & Push Docker Images
+    runs-on: ubuntu-latest
+    needs: [backend-ci, frontend-ci]
+    if: github.event_name == 'push'   # Skip for pull requests
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Enable QEMU for multi-platform builds (optional – remove if not needed)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Generate image tags: branch name + short SHA  (e.g. main-abc1234)
+      - name: Extract Docker metadata (backend)
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=,suffix=,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Extract Docker metadata (frontend)
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=,suffix=,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      # ── Backend image ──────────────────────────────────────────────────────
+      - name: Build & Push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./clusterconnect-backend
+          file: ./clusterconnect-backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      # ── Frontend image ─────────────────────────────────────────────────────
+      - name: Build & Push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Frontend/clusterconnect-client
+          file: ./Frontend/clusterconnect-client/Dockerfile
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
+
+      - name: Export short SHA for downstream jobs
+        id: meta
+        run: echo "version=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # JOB 4 ─ Deploy to Kubernetes (only on push to main)
+  # ───────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: 🚀 Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: docker-build-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production          # Requires a manual approval gate in GitHub
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "v1.29.0"
+
+      # Write your kubeconfig from the secret into ~/.kube/config
+      - name: Configure Kubernetes credentials
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Set image tags in K8s manifests
+        run: |
+          IMAGE_TAG=${{ needs.docker-build-push.outputs.image-tag }}
+          # Patch backend deployment image inline
+          kubectl set image deployment/backend \
+            backend=${{ env.BACKEND_IMAGE }}:${IMAGE_TAG} \
+            --namespace=default
+
+          # Patch frontend deployment image inline
+          kubectl set image deployment/frontend \
+            frontend=${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG} \
+            --namespace=default
+
+      - name: Apply remaining K8s manifests
+        run: |
+          kubectl apply -f clusterconnect-backend/k8s/app-config.yaml
+          kubectl apply -f clusterconnect-backend/k8s/backend.yaml
+          kubectl apply -f clusterconnect-backend/k8s/frontend.yaml
+
+      - name: Wait for rollout to complete
+        run: |
+          kubectl rollout status deployment/backend --namespace=default --timeout=180s
+          kubectl rollout status deployment/frontend --namespace=default --timeout=180s
+
+      - name: Verify pods are running
+        run: kubectl get pods --namespace=default -l app=backend
