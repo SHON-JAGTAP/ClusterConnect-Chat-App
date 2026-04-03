@@ -1,7 +1,8 @@
 # Dependencies
 node_modules/
-package-lock.json
 yarn.lock
+# Note: package-lock.json is intentionally NOT ignored
+# It is required for GitHub Actions npm caching (npm ci)
 
 # Environment variables
 .env

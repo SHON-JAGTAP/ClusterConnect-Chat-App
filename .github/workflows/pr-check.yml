@@ -26,8 +26,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: clusterconnect-backend/package-lock.json
 
       - name: Install deps
         run: npm ci
@@ -50,8 +48,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: Frontend/clusterconnect-client/package-lock.json
 
       - name: Install deps
         run: npm ci
