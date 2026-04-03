@@ -32,10 +32,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install dependencies
         run: npm ci
@@ -61,10 +61,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install dependencies
         run: npm ci
@@ -91,7 +91,10 @@ jobs:
     name: 🐳 Build & Push Docker Images
     runs-on: ubuntu-latest
     needs: [backend-ci, frontend-ci]
-    if: github.event_name == 'push'   # Skip for pull requests
+    # Skip for PRs AND skip if Docker Hub secrets are not configured yet
+    if: |
+      github.event_name == 'push' &&
+      secrets.DOCKERHUB_USERNAME != ''
 
     outputs:
       image-tag: ${{ steps.meta.outputs.version }}
