@@ -118,13 +118,14 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Skip push if Docker Hub not configured
-        if: steps.docker-login.outcome == 'failure'
+        if: steps.docker-login.outcome != 'success'
         run: |
-          echo "Docker Hub secrets not set yet. Skipping image push."
-          echo "Add DOCKERHUB_USERNAME and DOCKERHUB_TOKEN to enable."
+          echo "⚠️  DOCKERHUB_USERNAME / DOCKERHUB_TOKEN secrets not set."
+          echo "Skipping Docker build & push. Add secrets to GitHub to enable."
 
       # Generate image tags: branch name + short SHA  (e.g. main-abc1234)
       - name: Extract Docker metadata (backend)
+        if: steps.docker-login.outcome == 'success'
         id: meta-backend
         uses: docker/metadata-action@v5
         with:
@@ -135,6 +136,7 @@ jobs:
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Extract Docker metadata (frontend)
+        if: steps.docker-login.outcome == 'success'
         id: meta-frontend
         uses: docker/metadata-action@v5
         with:
@@ -146,6 +148,7 @@ jobs:
 
       # ── Backend image ──────────────────────────────────────────────────────
       - name: Build & Push backend image
+        if: steps.docker-login.outcome == 'success'
         uses: docker/build-push-action@v5
         with:
           context: ./clusterconnect-backend
@@ -159,6 +162,7 @@ jobs:
 
       # ── Frontend image ─────────────────────────────────────────────────────
       - name: Build & Push frontend image
+        if: steps.docker-login.outcome == 'success'
         uses: docker/build-push-action@v5
         with:
           context: ./Frontend/clusterconnect-client
@@ -170,9 +174,10 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
           build-args: |
-            VITE_API_URL=${{ secrets.VITE_API_URL }}
+            VITE_API_URL=${{ secrets.BACKEND_URL }}
 
       - name: Export short SHA for downstream jobs
+        if: steps.docker-login.outcome == 'success'
         id: meta
         run: echo "version=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
