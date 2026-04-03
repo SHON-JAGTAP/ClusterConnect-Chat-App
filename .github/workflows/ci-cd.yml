@@ -171,54 +171,59 @@ jobs:
         run: echo "version=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
   # ───────────────────────────────────────────────────────────────────────────
-  # JOB 4 ─ Deploy to Kubernetes (only on push to main)
+  # JOB 4 ─ Deploy to Kubernetes (DISABLED until cluster is ready)
+  # To enable: set KUBECONFIG_BASE64 secret and uncomment this job
+  #
+  # HOW TO GET KUBECONFIG_BASE64 (Windows PowerShell):
+  #   [Convert]::ToBase64String([System.IO.File]::ReadAllBytes("$env:USERPROFILE\.kube\config"))
+  #
+  # HOW TO GET KUBECONFIG_BASE64 (Linux/Mac):
+  #   cat ~/.kube/config | base64 -w 0
+  #
+  # Then add the output as GitHub Secret named: KUBECONFIG_BASE64
   # ───────────────────────────────────────────────────────────────────────────
-  deploy:
-    name: 🚀 Deploy to Kubernetes
-    runs-on: ubuntu-latest
-    needs: docker-build-push
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment: production          # Requires a manual approval gate in GitHub
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: "v1.29.0"
-
-      # Write your kubeconfig from the secret into ~/.kube/config
-      - name: Configure Kubernetes credentials
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-
-      - name: Set image tags in K8s manifests
-        run: |
-          IMAGE_TAG=${{ needs.docker-build-push.outputs.image-tag }}
-          # Patch backend deployment image inline
-          kubectl set image deployment/backend \
-            backend=${{ env.BACKEND_IMAGE }}:${IMAGE_TAG} \
-            --namespace=default
-
-          # Patch frontend deployment image inline
-          kubectl set image deployment/frontend \
-            frontend=${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG} \
-            --namespace=default
-
-      - name: Apply remaining K8s manifests
-        run: |
-          kubectl apply -f clusterconnect-backend/k8s/app-config.yaml
-          kubectl apply -f clusterconnect-backend/k8s/backend.yaml
-          kubectl apply -f clusterconnect-backend/k8s/frontend.yaml
-
-      - name: Wait for rollout to complete
-        run: |
-          kubectl rollout status deployment/backend --namespace=default --timeout=180s
-          kubectl rollout status deployment/frontend --namespace=default --timeout=180s
-
-      - name: Verify pods are running
-        run: kubectl get pods --namespace=default -l app=backend
+  # deploy:
+  #   name: 🚀 Deploy to Kubernetes
+  #   runs-on: ubuntu-latest
+  #   needs: docker-build-push
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #   environment: production
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Set up kubectl
+  #       uses: azure/setup-kubectl@v3
+  #       with:
+  #         version: "v1.29.0"
+  #
+  #     - name: Configure Kubernetes credentials
+  #       run: |
+  #         mkdir -p ~/.kube
+  #         echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 -d > ~/.kube/config
+  #         chmod 600 ~/.kube/config
+  #
+  #     - name: Set image tags in K8s manifests
+  #       run: |
+  #         IMAGE_TAG=${{ needs.docker-build-push.outputs.image-tag }}
+  #         kubectl set image deployment/backend \
+  #           backend=${{ env.BACKEND_IMAGE }}:${IMAGE_TAG} \
+  #           --namespace=default
+  #         kubectl set image deployment/frontend \
+  #           frontend=${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG} \
+  #           --namespace=default
+  #
+  #     - name: Apply remaining K8s manifests
+  #       run: |
+  #         kubectl apply -f clusterconnect-backend/k8s/app-config.yaml
+  #         kubectl apply -f clusterconnect-backend/k8s/backend.yaml
+  #         kubectl apply -f clusterconnect-backend/k8s/frontend.yaml
+  #
+  #     - name: Wait for rollout to complete
+  #       run: |
+  #         kubectl rollout status deployment/backend --timeout=180s
+  #         kubectl rollout status deployment/frontend --timeout=180s
+  #
+  #     - name: Verify pods are running
+  #       run: kubectl get pods --namespace=default -l app=backend
