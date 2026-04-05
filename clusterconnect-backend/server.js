@@ -193,11 +193,15 @@ io.on("connection", async (socket) => {
     const userObj = await getUserById(userId);
     if (userObj) {
       // Broadcast to EVERYONE connected (including self, frontend deduplicates)
-      io.emit("user_joined", { 
+      const userPayload = { 
         id: userObj._id.toString(), 
         email: userObj.email, 
-        name: userObj.name 
-      });
+        name: userObj.name,
+        isOnline: true
+      };
+      
+      io.emit("user_joined", userPayload); // For new registrations
+      io.emit("user_online", { userId });  // For online status light
     }
   } catch (e) {
     console.warn("⚠️  Redis setex failed on connect:", e.message);
@@ -264,6 +268,7 @@ io.on("connection", async (socket) => {
         redis.del(`session:${userId}`),
         redis.del(`online:${userId}`),
       ]);
+      io.emit("user_offline", { userId });
     } catch (e) {
       console.warn("⚠️  Redis cleanup failed on disconnect:", e.message);
     }

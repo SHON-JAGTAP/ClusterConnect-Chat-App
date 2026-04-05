@@ -21,9 +21,14 @@ const UserItem = ({ chatUser, isSelected, onClick }) => (
         : ""
     }`}
   >
-    <div className="flex items-center gap-3">
-      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-        {chatUser.name.charAt(0).toUpperCase()}
+    <div className="flex items-center gap-3 relative">
+      <div className="relative">
+        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+          {chatUser.name.charAt(0).toUpperCase()}
+        </div>
+        {chatUser.isOnline && (
+          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-[#1a1b26] shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-white font-medium truncate">{chatUser.name}</p>
@@ -156,11 +161,25 @@ function Chat() {
       });
     };
 
+    const onUserOnline = ({ userId }) => {
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, isOnline: true } : u))
+      );
+    };
+
+    const onUserOffline = ({ userId }) => {
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, isOnline: false } : u))
+      );
+    };
+
     socket.on("receive_message", onMessage);
     socket.on("user_typing", onTyping);
     socket.on("user_stopped_typing", onStopTyping);
     socket.on("message_failed", onFailed);
     socket.on("user_joined", onUserJoined);
+    socket.on("user_online", onUserOnline);
+    socket.on("user_offline", onUserOffline);
 
     return () => {
       socket.off("receive_message", onMessage);
@@ -168,6 +187,8 @@ function Chat() {
       socket.off("user_stopped_typing", onStopTyping);
       socket.off("message_failed", onFailed);
       socket.off("user_joined", onUserJoined);
+      socket.off("user_online", onUserOnline);
+      socket.off("user_offline", onUserOffline);
       socket.disconnect();
     };
   }, [token, user]);
