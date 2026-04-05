@@ -57,11 +57,11 @@ async function createUser(email, name, password = null) {
 }
 
 async function getUserById(id) {
-  return await User.findById(id).select("_id email name createdAt");
+  return await User.findById(id).select("_id email name createdAt").lean();
 }
 
 async function getAllUsers() {
-  return await User.find().select("_id email name createdAt");
+  return await User.find().select("_id email name createdAt").lean();
 }
 
 async function verifyPassword(plainPassword, hashedPassword) {
