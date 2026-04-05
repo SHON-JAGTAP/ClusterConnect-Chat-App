@@ -224,7 +224,16 @@ jobs:
           docker pull ${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG}
           minikube image load ${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG}
 
-      # ── Update image tags in running deployments ─────────────────────────
+      # ── Apply K8s manifests FIRST (creates resources if missing) ─────────
+      - name: Apply K8s manifests
+        run: |
+          kubectl apply -f clusterconnect-backend/k8s/app-config.yaml
+          kubectl apply -f clusterconnect-backend/k8s/backend.yaml
+          kubectl apply -f clusterconnect-backend/k8s/frontend.yaml
+          kubectl apply -f clusterconnect-backend/k8s/redis.yaml
+          kubectl apply -f clusterconnect-backend/k8s/kafka.yaml
+
+      # ── Update image tags to the newly built SHA tag ─────────────────────
       - name: Update deployment images
         run: |
           IMAGE_TAG=${{ needs.docker-build-push.outputs.image-tag }}
@@ -234,15 +243,6 @@ jobs:
           kubectl set image deployment/frontend \
             frontend=${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG} \
             --namespace=default
-
-      # ── Apply K8s manifests ──────────────────────────────────────────────
-      - name: Apply K8s manifests
-        run: |
-          kubectl apply -f clusterconnect-backend/k8s/app-config.yaml
-          kubectl apply -f clusterconnect-backend/k8s/backend.yaml
-          kubectl apply -f clusterconnect-backend/k8s/frontend.yaml
-          kubectl apply -f clusterconnect-backend/k8s/redis.yaml
-          kubectl apply -f clusterconnect-backend/k8s/kafka.yaml
 
       # ── Wait for pods to stabilize ───────────────────────────────────────
       - name: Wait for rollout
