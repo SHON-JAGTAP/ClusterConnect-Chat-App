@@ -1,7 +1,7 @@
 const Redis = require("ioredis");
 
 // Support both REDIS_URL and individual env vars
-const redisConfig = process.env.REDIS_URL 
+let redisConfig = process.env.REDIS_URL 
   ? process.env.REDIS_URL
   : {
       host: process.env.REDIS_HOST || "127.0.0.1",
@@ -13,6 +13,8 @@ const redisConfig = process.env.REDIS_URL
       },
       maxRetriesPerRequest: 3,
     };
+
+
 
 const redis = new Redis(redisConfig);
 
