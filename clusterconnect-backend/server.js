@@ -232,16 +232,35 @@ io.on("connection", async (socket) => {
     }
 
     try {
+      // 1. Try sending to Kafka first
       const result = await sendMessageToKafka({
         ...data,
         senderId: userId,         // Always use the authenticated socket userId
         message: data.message.trim(),
       });
 
+      // 2. Fallback: If Kafka is unavailable, process directly
       if (!result?.queued) {
-        console.warn(`⚠️  Kafka unavailable — message not queued for room [${data.chatRoom}]`);
-        // Optionally emit a 'message_failed' event so the UI can show a retry
-        socket.emit("message_failed", { chatRoom: data.chatRoom });
+        console.warn(`💡 Fallback mode: Direct DB write [room=${data.chatRoom}]`);
+        
+        const { createMessage } = require("./models/messageModel");
+        
+        let savedMessage;
+        try {
+          savedMessage = await createMessage(userId, data.message.trim(), data.chatRoom);
+          
+          // Broadcast purely over Redis
+          const payload = JSON.stringify({
+            ...savedMessage,
+            sender_id: savedMessage.sender_id, // ensure string/identifier matches
+          });
+          
+          await redis.publish("chat_channel", payload);
+          // Success! UI optimistic render will stand
+        } catch (dbErr) {
+          console.error("❌ Fallback DB/Redis error:", dbErr.message);
+          return socket.emit("message_failed", { chatRoom: data.chatRoom });
+        }
       }
     } catch (err) {
       console.error("❌ send_message socket error:", err.message);
