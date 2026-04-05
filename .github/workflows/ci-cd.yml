@@ -182,40 +182,112 @@ jobs:
         run: echo "version=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
   # ───────────────────────────────────────────────────────────────────────────
-  # JOB 4 ─ Deploy to Kubernetes (DISABLED until cluster is ready)
-  # To enable: set KUBECONFIG_BASE64 secret and uncomment this job
+  # JOB 4 ─ Deploy to Minikube (Self-Hosted Runner on WSL)
+  # STATUS: DISABLED — uncomment when self-hosted runner is set up
   #
-  # HOW TO GET KUBECONFIG_BASE64 (Windows PowerShell):
-  #   [Convert]::ToBase64String([System.IO.File]::ReadAllBytes("$env:USERPROFILE\.kube\config"))
+  # SETUP STEPS (run in WSL):
+  #   1. Go to: GitHub Repo → Settings → Actions → Runners → New self-hosted runner
+  #   2. Follow the Linux/x64 instructions GitHub shows you
+  #   3. Run: ./run.sh  (or install as service: sudo ./svc.sh install && sudo ./svc.sh start)
+  #   4. Make sure minikube is running: minikube start
+  #   5. Uncomment this job and push
   #
-  # HOW TO GET KUBECONFIG_BASE64 (Linux/Mac):
-  #   cat ~/.kube/config | base64 -w 0
-  #
-  # Then add the output as GitHub Secret named: KUBECONFIG_BASE64
+  # No extra secrets needed — kubectl uses your local ~/.kube/config on WSL
+  # ───────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: 🚀 Deploy to Minikube (Local WSL)
+    runs-on: self-hosted          # ← runs on YOUR WSL machine, not GitHub cloud
+    needs: docker-build-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Verify Minikube is running ───────────────────────────────────────
+      - name: Check Minikube status
+        run: |
+          minikube status || minikube start
+          kubectl cluster-info
+
+      # ── Load Docker images into Minikube (no Docker Hub pull needed) ─────
+      - name: Load backend image into Minikube
+        run: |
+          IMAGE_TAG=${{ needs.docker-build-push.outputs.image-tag }}
+          docker pull ${{ env.BACKEND_IMAGE }}:${IMAGE_TAG}
+          minikube image load ${{ env.BACKEND_IMAGE }}:${IMAGE_TAG}
+
+      - name: Load frontend image into Minikube
+        run: |
+          IMAGE_TAG=${{ needs.docker-build-push.outputs.image-tag }}
+          docker pull ${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG}
+          minikube image load ${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG}
+
+      # ── Update image tags in running deployments ─────────────────────────
+      - name: Update deployment images
+        run: |
+          IMAGE_TAG=${{ needs.docker-build-push.outputs.image-tag }}
+          kubectl set image deployment/backend \
+            backend=${{ env.BACKEND_IMAGE }}:${IMAGE_TAG} \
+            --namespace=default
+          kubectl set image deployment/frontend \
+            frontend=${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG} \
+            --namespace=default
+
+      # ── Apply K8s manifests ──────────────────────────────────────────────
+      - name: Apply K8s manifests
+        run: |
+          kubectl apply -f clusterconnect-backend/k8s/app-config.yaml
+          kubectl apply -f clusterconnect-backend/k8s/backend.yaml
+          kubectl apply -f clusterconnect-backend/k8s/frontend.yaml
+          kubectl apply -f clusterconnect-backend/k8s/redis.yaml
+          kubectl apply -f clusterconnect-backend/k8s/kafka.yaml
+
+      # ── Wait for pods to stabilize ───────────────────────────────────────
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/backend --timeout=180s
+          kubectl rollout status deployment/frontend --timeout=180s
+
+      - name: Show running pods & service URLs
+        run: |
+          kubectl get pods -n default
+          minikube service list
   # ───────────────────────────────────────────────────────────────────────────
   # deploy:
-  #   name: 🚀 Deploy to Kubernetes
+  #   name: 🚀 Deploy to AWS EKS
   #   runs-on: ubuntu-latest
   #   needs: docker-build-push
   #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-  #   environment: production
+  #   environment: production        # manual approval gate in GitHub
   #
   #   steps:
   #     - name: Checkout code
   #       uses: actions/checkout@v4
+  #
+  #     # ── Authenticate with AWS ────────────────────────────────────────────
+  #     - name: Configure AWS credentials
+  #       uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #         aws-region: ${{ secrets.AWS_REGION }}
+  #
+  #     # ── Get kubeconfig from EKS ──────────────────────────────────────────
+  #     - name: Update kubeconfig for EKS
+  #       run: |
+  #         aws eks update-kubeconfig \
+  #           --name ${{ secrets.EKS_CLUSTER_NAME }} \
+  #           --region ${{ secrets.AWS_REGION }}
   #
   #     - name: Set up kubectl
   #       uses: azure/setup-kubectl@v3
   #       with:
   #         version: "v1.29.0"
   #
-  #     - name: Configure Kubernetes credentials
-  #       run: |
-  #         mkdir -p ~/.kube
-  #         echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 -d > ~/.kube/config
-  #         chmod 600 ~/.kube/config
-  #
-  #     - name: Set image tags in K8s manifests
+  #     # ── Update image tags ────────────────────────────────────────────────
+  #     - name: Update K8s deployment image tags
   #       run: |
   #         IMAGE_TAG=${{ needs.docker-build-push.outputs.image-tag }}
   #         kubectl set image deployment/backend \
@@ -225,16 +297,20 @@ jobs:
   #           frontend=${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG} \
   #           --namespace=default
   #
-  #     - name: Apply remaining K8s manifests
+  #     # ── Apply all K8s manifests ──────────────────────────────────────────
+  #     - name: Apply K8s manifests
   #       run: |
   #         kubectl apply -f clusterconnect-backend/k8s/app-config.yaml
   #         kubectl apply -f clusterconnect-backend/k8s/backend.yaml
   #         kubectl apply -f clusterconnect-backend/k8s/frontend.yaml
+  #         kubectl apply -f clusterconnect-backend/k8s/redis.yaml
+  #         kubectl apply -f clusterconnect-backend/k8s/kafka.yaml
   #
+  #     # ── Wait for rollout ─────────────────────────────────────────────────
   #     - name: Wait for rollout to complete
   #       run: |
   #         kubectl rollout status deployment/backend --timeout=180s
   #         kubectl rollout status deployment/frontend --timeout=180s
   #
-  #     - name: Verify pods are running
-  #       run: kubectl get pods --namespace=default -l app=backend
+  #     - name: Print service URLs
+  #       run: kubectl get svc --namespace=default
