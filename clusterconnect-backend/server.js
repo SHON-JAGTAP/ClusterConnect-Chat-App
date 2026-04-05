@@ -8,6 +8,7 @@ const jwt = require("jsonwebtoken");
 
 const redis = require("./config/redis");
 const { connectDB } = require("./config/db");
+const { getUserById } = require("./models/userModel");
 const { initKafkaProducer, sendMessageToKafka } = require("./controllers/kafkaController");
 const runConsumer = require("./kafkaconsumer");
 
@@ -187,6 +188,17 @@ io.on("connection", async (socket) => {
   try {
     // Mark user as online with 1-hour TTL
     await redis.setex(`online:${userId}`, 3600, "true");
+    
+    // Broadcast the new user to everyone so their sidebar updates live
+    const userObj = await getUserById(userId);
+    if (userObj) {
+      // Broadcast to EVERYONE connected (including self, frontend deduplicates)
+      io.emit("user_joined", { 
+        id: userObj._id.toString(), 
+        email: userObj.email, 
+        name: userObj.name 
+      });
+    }
   } catch (e) {
     console.warn("⚠️  Redis setex failed on connect:", e.message);
   }

@@ -143,19 +143,34 @@ function Chat() {
     // Message send failure
     const onFailed = () => setSendError("Message failed to send. Please retry.");
 
+    // User Joined Live Update
+    const onUserJoined = (newUser) => {
+      // Don't add ourselves to the sidebar
+      const myId = user.id || user._id;
+      if (newUser.id === myId) return;
+      
+      setUsers((prev) => {
+        // Prevent duplicates
+        if (prev.some((u) => u.id === newUser.id)) return prev;
+        return [...prev, newUser];
+      });
+    };
+
     socket.on("receive_message", onMessage);
     socket.on("user_typing", onTyping);
     socket.on("user_stopped_typing", onStopTyping);
     socket.on("message_failed", onFailed);
+    socket.on("user_joined", onUserJoined);
 
     return () => {
       socket.off("receive_message", onMessage);
       socket.off("user_typing", onTyping);
       socket.off("user_stopped_typing", onStopTyping);
       socket.off("message_failed", onFailed);
+      socket.off("user_joined", onUserJoined);
       socket.disconnect();
     };
-  }, [token]);
+  }, [token, user]);
 
   // ── Auto-scroll to latest message ────────
   useEffect(() => {

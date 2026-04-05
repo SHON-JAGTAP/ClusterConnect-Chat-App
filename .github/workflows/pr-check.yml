@@ -10,6 +10,9 @@ on:
 # It does NOT build or push Docker images.
 # ─────────────────────────────────────────────────────────────────────────────
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ── 1. Backend checks ───────────────────────────────────────────────────────
   backend-check:
