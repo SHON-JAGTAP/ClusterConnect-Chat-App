@@ -3,7 +3,7 @@ const { mongoose } = require("../config/db");
 const messageSchema = new mongoose.Schema(
   {
     sender_id: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: String, // Accept both UUIDs and ObjectIds (cast to string) from migrated data
       ref: "User",
       required: [true, "Sender ID is required"],
       index: true,  // index for faster queries by sender
