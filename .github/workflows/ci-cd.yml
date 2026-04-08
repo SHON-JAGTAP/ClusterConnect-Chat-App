@@ -218,66 +218,66 @@ jobs:
   #
   # No extra secrets needed — kubectl uses your local ~/.kube/config on WSL
   # ───────────────────────────────────────────────────────────────────────────
-  deploy:
-    name: 🚀 Deploy to Minikube (Local WSL)
-    runs-on: self-hosted          # ← runs on YOUR WSL machine, not GitHub cloud
-    needs: docker-build-push
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment: production
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # ── Verify Minikube is running ───────────────────────────────────────
-      - name: Check Minikube status
-        run: |
-          minikube status || minikube start
-          kubectl cluster-info
-
-      # ── Load Docker images into Minikube (no Docker Hub pull needed) ─────
-      - name: Load backend image into Minikube
-        run: |
-          IMAGE_TAG=${{ needs.docker-build-push.outputs.image-tag }}
-          docker pull ${{ env.BACKEND_IMAGE }}:${IMAGE_TAG}
-          minikube image load ${{ env.BACKEND_IMAGE }}:${IMAGE_TAG}
-
-      - name: Load frontend image into Minikube
-        run: |
-          IMAGE_TAG=${{ needs.docker-build-push.outputs.image-tag }}
-          docker pull ${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG}
-          minikube image load ${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG}
-
-      # ── Apply K8s manifests FIRST (creates resources if missing) ─────────
-      - name: Apply K8s manifests
-        run: |
-          kubectl apply -f clusterconnect-backend/k8s/app-config.yaml
-          kubectl apply -f clusterconnect-backend/k8s/backend.yaml
-          kubectl apply -f clusterconnect-backend/k8s/frontend.yaml
-          kubectl apply -f clusterconnect-backend/k8s/redis.yaml
-          kubectl apply -f clusterconnect-backend/k8s/kafka.yaml
-
-      # ── Update image tags to the newly built SHA tag ─────────────────────
-      - name: Update deployment images
-        run: |
-          IMAGE_TAG=${{ needs.docker-build-push.outputs.image-tag }}
-          kubectl set image deployment/backend \
-            backend=${{ env.BACKEND_IMAGE }}:${IMAGE_TAG} \
-            --namespace=default
-          kubectl set image deployment/frontend \
-            frontend=${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG} \
-            --namespace=default
-
-      # ── Wait for pods to stabilize ───────────────────────────────────────
-      - name: Wait for rollout
-        run: |
-          kubectl rollout status deployment/backend --timeout=180s
-          kubectl rollout status deployment/frontend --timeout=180s
-
-      - name: Show running pods & service URLs
-        run: |
-          kubectl get pods -n default
-          minikube service list
+  # deploy:
+  #   name: 🚀 Deploy to Minikube (Local WSL)
+  #   runs-on: self-hosted          # ← runs on YOUR WSL machine, not GitHub cloud
+  #   needs: docker-build-push
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #   environment: production
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     # ── Verify Minikube is running ───────────────────────────────────────
+  #     - name: Check Minikube status
+  #       run: |
+  #         minikube status || minikube start
+  #         kubectl cluster-info
+  #
+  #     # ── Load Docker images into Minikube (no Docker Hub pull needed) ─────
+  #     - name: Load backend image into Minikube
+  #       run: |
+  #         IMAGE_TAG=${{ needs.docker-build-push.outputs.image-tag }}
+  #         docker pull ${{ env.BACKEND_IMAGE }}:${IMAGE_TAG}
+  #         minikube image load ${{ env.BACKEND_IMAGE }}:${IMAGE_TAG}
+  #
+  #     - name: Load frontend image into Minikube
+  #       run: |
+  #         IMAGE_TAG=${{ needs.docker-build-push.outputs.image-tag }}
+  #         docker pull ${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG}
+  #         minikube image load ${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG}
+  #
+  #     # ── Apply K8s manifests FIRST (creates resources if missing) ─────────
+  #     - name: Apply K8s manifests
+  #       run: |
+  #         kubectl apply -f clusterconnect-backend/k8s/app-config.yaml
+  #         kubectl apply -f clusterconnect-backend/k8s/backend.yaml
+  #         kubectl apply -f clusterconnect-backend/k8s/frontend.yaml
+  #         kubectl apply -f clusterconnect-backend/k8s/redis.yaml
+  #         kubectl apply -f clusterconnect-backend/k8s/kafka.yaml
+  #
+  #     # ── Update image tags to the newly built SHA tag ─────────────────────
+  #     - name: Update deployment images
+  #       run: |
+  #         IMAGE_TAG=${{ needs.docker-build-push.outputs.image-tag }}
+  #         kubectl set image deployment/backend \
+  #           backend=${{ env.BACKEND_IMAGE }}:${IMAGE_TAG} \
+  #           --namespace=default
+  #         kubectl set image deployment/frontend \
+  #           frontend=${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG} \
+  #           --namespace=default
+  #
+  #     # ── Wait for pods to stabilize ───────────────────────────────────────
+  #     - name: Wait for rollout
+  #       run: |
+  #         kubectl rollout status deployment/backend --timeout=180s
+  #         kubectl rollout status deployment/frontend --timeout=180s
+  #
+  #     - name: Show running pods & service URLs
+  #       run: |
+  #         kubectl get pods -n default
+  #         minikube service list
   # ───────────────────────────────────────────────────────────────────────────
   # deploy:
   #   name: 🚀 Deploy to AWS EKS
