@@ -160,6 +160,18 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
+      # ── Trivy Security Scan (Backend) ─────────────────────────────────────────
+      - name: 🛡️ Trivy Scan - Backend Image
+        if: steps.docker-login.outcome == 'success'
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: '${{ env.BACKEND_IMAGE }}:latest'
+          format: 'table'
+          exit-code: '1'             # Will fail the pipeline if it finds critical/high vulns
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
       # ── Frontend image ─────────────────────────────────────────────────────
       - name: Build & Push frontend image
         if: steps.docker-login.outcome == 'success'
@@ -175,6 +187,18 @@ jobs:
           platforms: linux/amd64
           build-args: |
             VITE_API_URL=${{ secrets.BACKEND_URL }}
+
+      # ── Trivy Security Scan (Frontend) ────────────────────────────────────────
+      - name: 🛡️ Trivy Scan - Frontend Image
+        if: steps.docker-login.outcome == 'success'
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: '${{ env.FRONTEND_IMAGE }}:latest'
+          format: 'table'
+          exit-code: '1'             # Will fail the pipeline if it finds critical/high vulns
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
 
       - name: Export short SHA for downstream jobs
         if: steps.docker-login.outcome == 'success'
