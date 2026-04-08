@@ -13,6 +13,9 @@ RUN npm run build
 # Production stage
 FROM node:22-alpine
 
+# Upgrade Alpine packages to patch known OS vulnerabilities (caught by Trivy)
+RUN apk upgrade --no-cache
+
 WORKDIR /app
 
 RUN npm install -g serve

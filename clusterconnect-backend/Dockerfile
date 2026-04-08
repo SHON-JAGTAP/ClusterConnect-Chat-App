@@ -22,6 +22,9 @@ RUN npm ci --only=production && npm cache clean --force
 # ─────────────────────────────────────────────────────
 FROM node:20-alpine AS runtime
 
+# Upgrade Alpine packages to patch known OS vulnerabilities (caught by Trivy)
+RUN apk upgrade --no-cache
+
 # Set NODE_ENV early so any runtime code sees it
 ENV NODE_ENV=production
 

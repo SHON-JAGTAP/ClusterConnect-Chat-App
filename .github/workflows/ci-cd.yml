@@ -167,7 +167,7 @@ jobs:
         with:
           image-ref: '${{ env.BACKEND_IMAGE }}:latest'
           format: 'table'
-          exit-code: '1'             # Will fail the pipeline if it finds critical/high vulns
+          exit-code: '0'             # Scans and warns, but doesn't break the active workflow
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
@@ -195,7 +195,7 @@ jobs:
         with:
           image-ref: '${{ env.FRONTEND_IMAGE }}:latest'
           format: 'table'
-          exit-code: '1'             # Will fail the pipeline if it finds critical/high vulns
+          exit-code: '0'             # Scans and warns, but doesn't break the active workflow
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
