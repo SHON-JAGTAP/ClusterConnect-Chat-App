@@ -163,7 +163,7 @@ jobs:
       # ── Trivy Security Scan (Backend) ─────────────────────────────────────────
       - name: 🛡️ Trivy Scan - Backend Image
         if: steps.docker-login.outcome == 'success'
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@master
         with:
           image-ref: '${{ env.BACKEND_IMAGE }}:latest'
           format: 'table'
@@ -191,7 +191,7 @@ jobs:
       # ── Trivy Security Scan (Frontend) ────────────────────────────────────────
       - name: 🛡️ Trivy Scan - Frontend Image
         if: steps.docker-login.outcome == 'success'
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@master
         with:
           image-ref: '${{ env.FRONTEND_IMAGE }}:latest'
           format: 'table'
