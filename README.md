@@ -67,8 +67,7 @@
 
 | Service | URL |
 |---|---|
-| **Frontend** | [Vercel](https://clusterconnect-chat-app.vercel.app) |
-| **Backend API** | [Render](https://clusterconnect-chat-app.onrender.com) |
+| **Webapp url** |(https://cluster-connect-chat-app-dw3e.vercel.app)
 
 ---
 
