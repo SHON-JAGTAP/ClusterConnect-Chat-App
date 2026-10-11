@@ -69,20 +69,15 @@ async function sendMessage(req, res) {
 
 /**
  * GET /api/chat/users
- * Fetch all registered users (excluding the caller's own account).
+ * Fetch all registered users, including the caller's own account.
  */
 async function getUsers(req, res) {
   try {
-    const currentUserId = req.user.userId;
     const users = await getAllUsers();
-    // Filter out the requesting user on the server side
-    const filtered = users.filter(
-      (u) => u._id.toString() !== currentUserId.toString()
-    );
 
     // Fetch live online status from Redis for each user
     const annotatedUsers = await Promise.all(
-      filtered.map(async (u) => {
+      users.map(async (u) => {
         const isOnline = await redis.get(`online:${u._id.toString()}`);
         return {
           ...u,
