@@ -8,6 +8,7 @@ const jwt = require("jsonwebtoken");
 
 const redis = require("./config/redis");
 const { connectDB } = require("./config/db");
+const { kafkaEnabled } = require("./config/kafka");
 const { getUserById } = require("./models/userModel");
 const { initKafkaProducer, sendMessageToKafka } = require("./controllers/kafkaController");
 const runConsumer = require("./kafkaconsumer");
@@ -87,8 +88,10 @@ app.get("/health", (req, res) => {
   await connectDB();
 
   // Kafka is optional — app continues without it
-  initKafkaProducer();
-  runConsumer();
+  if (kafkaEnabled) {
+    initKafkaProducer();
+    runConsumer();
+  }
 })();
 
 // ─────────────────────────────────────────────
@@ -142,14 +145,14 @@ io.use(async (socket, next) => {
 // REDIS SUBSCRIBER (pub/sub for cross-process broadcasting)
 // ─────────────────────────────────────────────
 
-const subscriber = redis.duplicate();
+const subscriber = redis.isEnabled ? redis.duplicate() : null;
 
-subscriber.on("ready", () => {
+subscriber?.on("ready", () => {
   subscriber.subscribe("chat_channel");
   console.log("✅ Redis Subscriber ready — subscribed to [chat_channel]");
 });
 
-subscriber.on("message", (channel, message) => {
+subscriber?.on("message", (channel, message) => {
   try {
     const data = JSON.parse(message);
 
@@ -173,7 +176,7 @@ subscriber.on("message", (channel, message) => {
   }
 });
 
-subscriber.on("error", (err) => {
+subscriber?.on("error", (err) => {
   console.error("❌ Redis subscriber error:", err.message);
 });
 

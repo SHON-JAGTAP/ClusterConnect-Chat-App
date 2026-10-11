@@ -222,15 +222,24 @@ function Chat() {
   useEffect(() => {
     if (!token) return;
     const fetchUsers = async () => {
+      const currentUser = {
+        ...user,
+        id: user.id || user._id,
+        isOnline: true,
+      };
+
       try {
         const { data } = await api.get("/api/chat/users");
-        setUsers(data.map((u) => ({ ...u, id: u._id || u.id })));
+        const apiUsers = data.map((u) => ({ ...u, id: u._id || u.id }));
+        const hasCurrentUser = apiUsers.some((u) => u.id?.toString() === currentUser.id?.toString());
+        setUsers(hasCurrentUser ? apiUsers : [currentUser, ...apiUsers]);
       } catch (err) {
         console.error("Failed to fetch users:", err);
+        setUsers(currentUser.id ? [currentUser] : []);
       }
     };
     fetchUsers();
-  }, [token]);
+  }, [token, user]);
 
   // ── Socket lifecycle ──────────────────────
   useEffect(() => {
